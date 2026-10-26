@@ -173,15 +173,35 @@ const SCHEMA_SQL = `
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  CREATE INDEX IF NOT EXISTS idx_reports_site    ON reports(site_id);
-  CREATE INDEX IF NOT EXISTS idx_reports_worker  ON reports(submitted_by_id);
-  CREATE INDEX IF NOT EXISTS idx_reports_status  ON reports(status);
-  CREATE INDEX IF NOT EXISTS idx_notif_user      ON notifications(user_id);
+  CREATE TABLE IF NOT EXISTS site_workers (
+    site_id     TEXT NOT NULL,
+    worker_id   TEXT NOT NULL,
+    assigned_by TEXT NOT NULL,
+    assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (site_id, worker_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_reports_site       ON reports(site_id);
+  CREATE INDEX IF NOT EXISTS idx_reports_worker     ON reports(submitted_by_id);
+  CREATE INDEX IF NOT EXISTS idx_reports_status     ON reports(status);
+  CREATE INDEX IF NOT EXISTS idx_notif_user         ON notifications(user_id);
+  CREATE INDEX IF NOT EXISTS idx_site_workers_site  ON site_workers(site_id);
+  CREATE INDEX IF NOT EXISTS idx_site_workers_wkr   ON site_workers(worker_id);
 `;
 
 async function initSchema() {
   const db = await getWrappedDb();
   db.exec(SCHEMA_SQL);
+
+  // Seed 2 permanent default sites — always present regardless of re-seeds.
+  // manager_id / owner_id will be overwritten by seed.js via UPDATE; 'system' is a safe placeholder.
+  db.exec(`
+    INSERT OR IGNORE INTO sites (id, name, address, latitude, longitude, manager_id, owner_id, target_stage, start_date)
+    VALUES
+      ('site-default-1', 'Kacyiru Housing Block A',     'KG 9 Ave, Kacyiru, Kigali',    -1.9441, 30.0619, 'system', 'system', 'concrete_poured',    '2024-09-01'),
+      ('site-default-2', 'Kimironko Commercial Plaza',   'KG 15 Ave, Kimironko, Kigali', -1.9348, 30.1076, 'system', 'system', 'structure_complete', '2024-07-15');
+  `);
+
   console.log('[DB] Schema ready');
   return db;
 }
