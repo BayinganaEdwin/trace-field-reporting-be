@@ -38,14 +38,29 @@ function registerRoutes() {
   });
 }
 
-// Boot
-initSchema().then(() => {
+// Boot — init schema, then seed if the DB is empty (safe for ephemeral hosting)
+async function boot() {
+  await initSchema();
+
+  const { getDbSync, DB_FILE } = require('./db/schema');
+  const fs = require('fs');
+  const db = getDbSync();
+  const userCount = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+  if (userCount === 0) {
+    console.log('[SiteLog] Empty database — running seed...');
+    // Inline seed to avoid a separate child process
+    const { execSync } = require('child_process');
+    execSync(`node ${require('path').join(__dirname, 'db/seed.js')}`, { stdio: 'inherit' });
+  }
+
   registerRoutes();
   app.listen(PORT, () => {
-    console.log(`[SiteLog API] Running on http://localhost:${PORT}`);
+    console.log(`[SiteLog API] Running on port ${PORT}`);
   });
-}).catch(err => {
-  console.error('[Fatal] DB init failed:', err);
+}
+
+boot().catch(err => {
+  console.error('[Fatal] Boot failed:', err);
   process.exit(1);
 });
 
