@@ -1,0 +1,5 @@
+{
+  "watch": ["src"],
+  "ignore": ["src/db/*.json", "uploads/*"],
+  "ext": "js,json"
+}
