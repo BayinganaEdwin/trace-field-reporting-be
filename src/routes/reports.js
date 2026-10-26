@@ -7,9 +7,7 @@ const fetch    = require('node-fetch');
 const FormData = require('form-data');
 const { getDbSync: getDb } = require('../db/schema');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { verifyWithClaude } = require('../services/claudeVerify');
-
-const INFERENCE_URL = process.env.INFERENCE_URL || 'http://localhost:5001';
+const INFERENCE_URL = process.env.ML_SERVER_URL || 'http://localhost:5001';
 const UPLOAD_DIR    = path.join(__dirname, '../../uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -27,55 +25,29 @@ function rowToReport(row) {
   };
 }
 
-/** Call the Python MobileNetV2 inference server (secondary fallback). */
-async function callPythonInference(imageBuffer, mimetype) {
+/** Call the MobileNetV2 Flask inference server. Throws if unreachable or in dummy mode. */
+async function runVerification(imageBuffer, mimetype) {
+  const form = new FormData();
+  form.append('image', imageBuffer, { filename: 'photo.jpg', contentType: mimetype });
+
+  let res;
   try {
-    const form = new FormData();
-    form.append('image', imageBuffer, { filename: 'photo.jpg', contentType: mimetype });
-    const res = await fetch(`${INFERENCE_URL}/predict`, { method: 'POST', body: form, timeout: 15000 });
-    if (!res.ok) throw new Error(`Inference HTTP ${res.status}`);
-    const data = await res.json();
-    // Reject if Python server is in dummy/random mode
-    if (data.modelVersion === 'dummy-random') {
-      console.warn('[Inference] Python server returned random dummy scores — ignoring');
-      return null;
-    }
-    return data;
+    res = await fetch(`${INFERENCE_URL}/predict`, { method: 'POST', body: form, timeout: 15000 });
   } catch (err) {
-    console.warn('[Inference] Python server unavailable:', err.message);
-    return null;
-  }
-}
-
-/**
- * Run AI verification with priority:
- *   1. Python MobileNetV2 server (your trained model — primary)
- *   2. Claude vision (optional fallback if ANTHROPIC_API_KEY is set and Python server is down)
- *   3. null (report stays 'pending' — never returns random scores)
- */
-async function runVerification(imageBuffer, mimetype, reportedStage) {
-  // 1. Try the trained MobileNetV2 model (Python inference server)
-  const python = await callPythonInference(imageBuffer, mimetype);
-  if (python !== null) {
-    console.log(`[AI] MobileNetV2 → isConstruction=${python.isConstructionSite}, ` +
-      `stage=${python.detectedStage}, confidence=${(python.confidenceScore * 100).toFixed(0)}%`);
-    return python;
+    throw new Error(`ML server unreachable at ${INFERENCE_URL}: ${err.message}`);
   }
 
-  // 2. Fall back to Claude vision if API key is configured
-  if (process.env.ANTHROPIC_API_KEY) {
-    console.log('[AI] Python server unavailable — falling back to Claude vision');
-    const claude = await verifyWithClaude(imageBuffer, mimetype, reportedStage);
-    if (claude !== null) {
-      console.log(`[AI] Claude vision → isConstruction=${claude.isConstructionSite}, ` +
-        `stage=${claude.detectedStage}, confidence=${(claude.confidenceScore * 100).toFixed(0)}%`);
-      return claude;
-    }
+  if (!res.ok) throw new Error(`ML server returned HTTP ${res.status}`);
+
+  const data = await res.json();
+
+  if (data.modelVersion === 'dummy-random') {
+    throw new Error('ML server is running in dummy mode — load a trained model before deploying');
   }
 
-  // 3. No AI available — report stays 'pending'
-  console.log('[AI] No verification service available — report will stay pending');
-  return null;
+  console.log(`[AI] MobileNetV2 → isConstruction=${data.isConstructionSite}, ` +
+    `stage=${data.detectedStage}, confidence=${(data.confidenceScore * 100).toFixed(0)}%`);
+  return data;
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -161,8 +133,7 @@ router.post('/', requireAuth, requireRole('worker'), async (req, res) => {
 
   // ── Run AI verification async (does not block the 201 response) ─────────
   if (imageBuffer) {
-    runVerification(imageBuffer, imageMimetype, reported_stage).then(ai => {
-      if (!ai) return; // No AI available — report stays 'pending', no fake data written
+    runVerification(imageBuffer, imageMimetype).then(ai => {
 
       // Determine status from AI result:
       //   flagged  → not a construction site, OR stage mismatch (model disagrees with worker)
@@ -199,7 +170,7 @@ router.post('/', requireAuth, requireRole('worker'), async (req, res) => {
       console.log(`[AI] report ${reportId} → status=${newStatus}, ` +
         `stage=${ai.detectedStage}, confidence=${Math.round((ai.confidenceScore ?? 0) * 100)}%`);
     }).catch(err => {
-      console.error('[AI] Verification error:', err.message);
+      console.error('[AI] Verification failed — ML server is required:', err.message);
     });
   }
 
