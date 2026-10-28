@@ -121,19 +121,20 @@ const SCHEMA_SQL = `
   );
 
   CREATE TABLE IF NOT EXISTS sites (
-    id            TEXT PRIMARY KEY,
-    name          TEXT NOT NULL,
-    address       TEXT,
-    latitude      REAL,
-    longitude     REAL,
-    manager_id    TEXT NOT NULL,
-    owner_id      TEXT,
-    target_stage  TEXT NOT NULL DEFAULT 'formwork_erected',
-    status        TEXT NOT NULL DEFAULT 'active',
-    start_date    TEXT,
-    end_date      TEXT,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    id                   TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL,
+    address              TEXT,
+    latitude             REAL,
+    longitude            REAL,
+    manager_id           TEXT NOT NULL,
+    owner_id             TEXT,
+    target_stage         TEXT NOT NULL DEFAULT 'formwork_erected',
+    status               TEXT NOT NULL DEFAULT 'active',
+    start_date           TEXT,
+    end_date             TEXT,
+    reference_photo_url  TEXT,
+    created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS reports (
@@ -143,6 +144,7 @@ const SCHEMA_SQL = `
     submitted_by_id   TEXT NOT NULL,
     submitted_at      TEXT NOT NULL DEFAULT (datetime('now')),
     reported_stage    TEXT NOT NULL,
+    section           TEXT NOT NULL DEFAULT 'general',
     status            TEXT NOT NULL DEFAULT 'pending',
     notes             TEXT,
     latitude          REAL,
@@ -154,6 +156,13 @@ const SCHEMA_SQL = `
     ai_model_version      TEXT,
     ai_inference_ms       INTEGER,
     ai_observations       TEXT,
+    progress_delta        REAL,
+    progress_label        TEXT,
+    progress_stagnant     INTEGER,
+    compared_to_report_id TEXT,
+    reference_similarity  REAL,
+    reference_label       TEXT,
+    upi_number            TEXT,
     reviewed_by_id    TEXT,
     reviewed_at       TEXT,
     rejection_reason  TEXT,
@@ -173,34 +182,29 @@ const SCHEMA_SQL = `
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  CREATE TABLE IF NOT EXISTS site_workers (
-    site_id     TEXT NOT NULL,
-    worker_id   TEXT NOT NULL,
-    assigned_by TEXT NOT NULL,
-    assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (site_id, worker_id)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_reports_site       ON reports(site_id);
-  CREATE INDEX IF NOT EXISTS idx_reports_worker     ON reports(submitted_by_id);
-  CREATE INDEX IF NOT EXISTS idx_reports_status     ON reports(status);
-  CREATE INDEX IF NOT EXISTS idx_notif_user         ON notifications(user_id);
-  CREATE INDEX IF NOT EXISTS idx_site_workers_site  ON site_workers(site_id);
-  CREATE INDEX IF NOT EXISTS idx_site_workers_wkr   ON site_workers(worker_id);
+  CREATE INDEX IF NOT EXISTS idx_reports_site    ON reports(site_id);
+  CREATE INDEX IF NOT EXISTS idx_reports_worker  ON reports(submitted_by_id);
+  CREATE INDEX IF NOT EXISTS idx_reports_status  ON reports(status);
+  CREATE INDEX IF NOT EXISTS idx_notif_user      ON notifications(user_id);
 `;
+
+/** Run an ALTER TABLE statement, ignoring "duplicate column" errors for idempotency. */
+function tryAlter(db, sql) {
+  try { db.exec(sql); } catch (e) {
+    if (!e.message?.includes('duplicate column')) throw e;
+  }
+}
 
 async function initSchema() {
   const db = await getWrappedDb();
   db.exec(SCHEMA_SQL);
 
-  // Seed 2 permanent default sites — always present regardless of re-seeds.
-  // manager_id / owner_id will be overwritten by seed.js via UPDATE; 'system' is a safe placeholder.
-  db.exec(`
-    INSERT OR IGNORE INTO sites (id, name, address, latitude, longitude, manager_id, owner_id, target_stage, start_date)
-    VALUES
-      ('site-default-1', 'Kacyiru Housing Block A',     'KG 9 Ave, Kacyiru, Kigali',    -1.9441, 30.0619, 'system', 'system', 'concrete_poured',    '2024-09-01'),
-      ('site-default-2', 'Kimironko Commercial Plaza',   'KG 15 Ave, Kimironko, Kigali', -1.9348, 30.1076, 'system', 'system', 'structure_complete', '2024-07-15');
-  `);
+  // ── Migrations — safe to run on every startup ────────────────────────────
+  tryAlter(db, 'ALTER TABLE sites ADD COLUMN reference_photo_url TEXT');
+  tryAlter(db, 'ALTER TABLE reports ADD COLUMN reference_similarity REAL');
+  tryAlter(db, 'ALTER TABLE reports ADD COLUMN reference_label TEXT');
+  tryAlter(db, 'ALTER TABLE reports ADD COLUMN upi_number TEXT');
+  tryAlter(db, "ALTER TABLE reports ADD COLUMN section TEXT NOT NULL DEFAULT 'general'");
 
   console.log('[DB] Schema ready');
   return db;
