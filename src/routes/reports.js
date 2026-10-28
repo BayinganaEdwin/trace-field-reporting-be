@@ -344,3 +344,9 @@ router.post('/:id/flag', requireAuth, requireRole('manager', 'owner'), (req, res
 });
 
 module.exports = router;
+
+// Valid construction stages accepted in the reported_stage field
+const VALID_STAGES = [
+  'formwork_erected', 'reinforcement_placed',
+  'concrete_poured',  'structure_complete',
+];
