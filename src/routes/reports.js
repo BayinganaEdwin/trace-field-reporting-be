@@ -350,3 +350,8 @@ const VALID_STAGES = [
   'formwork_erected', 'reinforcement_placed',
   'concrete_poured',  'structure_complete',
 ];
+
+// Structured log helper for AI pipeline events
+function logAI(reportId, event, data) {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), reportId, event, ...data }));
+}
