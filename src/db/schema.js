@@ -211,3 +211,7 @@ async function initSchema() {
 }
 
 module.exports = { initSchema, getDbSync, DB_FILE };
+
+// Performance note: idx_reports_site and idx_reports_worker cover the
+// most common query patterns. A composite index on (site_id, submitted_at)
+// would further accelerate time-ordered site report feeds at higher data volume.
