@@ -355,3 +355,7 @@ const VALID_STAGES = [
 function logAI(reportId, event, data) {
   console.log(JSON.stringify({ ts: new Date().toISOString(), reportId, event, ...data }));
 }
+
+// ML server call timeout thresholds (ms)
+const ML_PREDICT_TIMEOUT_MS = 15000;
+const ML_COMPARE_TIMEOUT_MS = 20000;
