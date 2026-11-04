@@ -359,3 +359,7 @@ function logAI(reportId, event, data) {
 // ML server call timeout thresholds (ms)
 const ML_PREDICT_TIMEOUT_MS = 15000;
 const ML_COMPARE_TIMEOUT_MS = 20000;
+
+// Sections that support image-to-image progress comparison via /compare.
+// Only 'beams_columns' is currently tracked; expand as model coverage grows.
+const COMPARISON_SECTIONS = ['beams_columns'];
