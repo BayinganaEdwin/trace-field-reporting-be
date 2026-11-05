@@ -276,3 +276,6 @@ router.delete('/:id/reference-photo', requireAuth, requireRole('manager', 'owner
 });
 
 module.exports = router;
+
+// Max reference photo file size: 5 MB
+const MAX_REFERENCE_PHOTO_BYTES = 5 * 1024 * 1024;
