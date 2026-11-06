@@ -73,3 +73,7 @@ router.get('/summary', requireAuth, requireRole('manager', 'owner'), (req, res) 
 });
 
 module.exports = router;
+
+// Future metrics to add to summary:
+// - mismatch_rate: flagged / total reports (AI vs worker disagreement rate)
+// - reference_coverage: sites_with_reference / total_sites
