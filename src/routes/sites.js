@@ -1,8 +1,13 @@
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
+const path    = require('path');
+const fs      = require('fs');
 const { v4: uuid } = require('uuid');
 const { getDbSync: getDb } = require('../db/schema');
 const { requireAuth, requireRole } = require('../middleware/auth');
+
+const UPLOAD_DIR = path.join(__dirname, '../../uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -29,7 +34,12 @@ function enrichSite(site, db) {
   ).get(site.id);
   const workerCount = workerCountRow?.count ?? 0;
 
-  return { ...site, totalReports, approvedCount, flaggedCount, pendingCount, rei, currentStage, workerCount };
+  return {
+    ...site,
+    totalReports, approvedCount, flaggedCount, pendingCount,
+    rei, currentStage, workerCount,
+    reference_photo_url: site.reference_photo_url ?? null,
+  };
 }
 
 // ── GET /sites — authenticated, role-based ────────────────────────────────────
@@ -203,6 +213,66 @@ router.get('/:id/available-workers', requireAuth, requireRole('manager'), (req, 
   `).all(req.params.id);
 
   res.json(workers);
+});
+
+// ── Reference photo ───────────────────────────────────────────────────────────
+
+// POST /sites/:id/reference-photo — manager uploads a reference design image for the site
+// The image is stored in UPLOAD_DIR and the URL is saved on the site row.
+router.post('/:id/reference-photo', requireAuth, requireRole('manager', 'owner'), async (req, res) => {
+  const db   = getDb();
+  const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(req.params.id);
+  if (!site) return res.status(404).json({ error: 'Site not found' });
+
+  if (!req.files || !req.files.photo) {
+    return res.status(400).json({ error: 'photo field is required' });
+  }
+
+  const file     = req.files.photo;
+  const ext      = path.extname(file.name) || '.jpg';
+  const filename = `ref-${req.params.id}${ext}`;
+  const filepath = path.join(UPLOAD_DIR, filename);
+
+  try {
+    // Remove old reference if it exists and has a different filename
+    if (site.reference_photo_url) {
+      const oldFile = path.join(UPLOAD_DIR, path.basename(site.reference_photo_url));
+      if (oldFile !== filepath && fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+    }
+
+    await file.mv(filepath);
+
+    db.prepare(`
+      UPDATE sites
+      SET reference_photo_url = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(`/uploads/${filename}`, req.params.id);
+
+    const updated = db.prepare('SELECT * FROM sites WHERE id = ?').get(req.params.id);
+    res.json(enrichSite(updated, db));
+  } catch (err) {
+    console.error('[Reference photo] upload error:', err.message);
+    res.status(500).json({ error: 'Failed to save reference photo' });
+  }
+});
+
+// DELETE /sites/:id/reference-photo — manager removes the reference image
+router.delete('/:id/reference-photo', requireAuth, requireRole('manager', 'owner'), (req, res) => {
+  const db   = getDb();
+  const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(req.params.id);
+  if (!site) return res.status(404).json({ error: 'Site not found' });
+
+  if (site.reference_photo_url) {
+    const filepath = path.join(UPLOAD_DIR, path.basename(site.reference_photo_url));
+    if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+  }
+
+  db.prepare(`
+    UPDATE sites SET reference_photo_url = NULL, updated_at = datetime('now') WHERE id = ?
+  `).run(req.params.id);
+
+  const updated = db.prepare('SELECT * FROM sites WHERE id = ?').get(req.params.id);
+  res.json(enrichSite(updated, db));
 });
 
 module.exports = router;
