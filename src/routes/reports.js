@@ -363,3 +363,6 @@ const ML_COMPARE_TIMEOUT_MS = 20000;
 // Sections that support image-to-image progress comparison via /compare.
 // Only 'beams_columns' is currently tracked; expand as model coverage grows.
 const COMPARISON_SECTIONS = ['beams_columns'];
+
+// Reference comparison log format:
+// { event: 'ref_compare', reportId, similarity, label, referenceUrl }
