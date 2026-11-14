@@ -85,3 +85,8 @@ boot().catch((err) => {
 });
 
 module.exports = app;
+
+// Version endpoint — useful for deployment health checks and report attribution
+app.get('/version', (_req, res) =>
+  res.json({ version: '1.0.0', model: 'mobilenetv2-v1', env: process.env.NODE_ENV || 'development' }),
+);
