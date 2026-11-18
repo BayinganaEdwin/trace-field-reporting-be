@@ -30,3 +30,6 @@ router.post('/read-all', requireAuth, (req, res) => {
 });
 
 module.exports = router;
+
+// TODO: add GET /notifications/unread-count for badge indicator
+// TODO: add DELETE /notifications/:id for dismissal
