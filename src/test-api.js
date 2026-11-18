@@ -24,7 +24,7 @@ async function req(method, path, body, userId = 'user-manager-1') {
 
 async function main() {
   console.log('═'.repeat(60));
-  console.log('SiteLog API smoke test');
+  console.log('Trace API smoke test');
   console.log('═'.repeat(60));
 
   await req('GET', '/health');
