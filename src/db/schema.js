@@ -10,7 +10,10 @@ const path      = require('path');
 const fs        = require('fs');
 
 const DB_DIR  = path.join(__dirname, '../../db');
-const DB_FILE = path.join(DB_DIR, 'sitelog.db.json');  // persisted as Buffer JSON
+// Allow tests to override the DB file path via environment variable
+const DB_FILE = process.env.TRACE_TEST_DB
+  ? process.env.TRACE_TEST_DB
+  : path.join(DB_DIR, 'sitelog.db.json');
 
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
@@ -182,10 +185,20 @@ const SCHEMA_SQL = `
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS site_workers (
+    site_id      TEXT NOT NULL,
+    worker_id    TEXT NOT NULL,
+    assigned_by  TEXT,
+    assigned_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (site_id, worker_id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_reports_site    ON reports(site_id);
   CREATE INDEX IF NOT EXISTS idx_reports_worker  ON reports(submitted_by_id);
   CREATE INDEX IF NOT EXISTS idx_reports_status  ON reports(status);
   CREATE INDEX IF NOT EXISTS idx_notif_user      ON notifications(user_id);
+  CREATE INDEX IF NOT EXISTS idx_sw_site         ON site_workers(site_id);
+  CREATE INDEX IF NOT EXISTS idx_sw_worker       ON site_workers(worker_id);
 `;
 
 /** Run an ALTER TABLE statement, ignoring "duplicate column" errors for idempotency. */
@@ -205,6 +218,20 @@ async function initSchema() {
   tryAlter(db, 'ALTER TABLE reports ADD COLUMN reference_label TEXT');
   tryAlter(db, 'ALTER TABLE reports ADD COLUMN upi_number TEXT');
   tryAlter(db, "ALTER TABLE reports ADD COLUMN section TEXT NOT NULL DEFAULT 'general'");
+
+  // Belt-and-suspenders: ensure site_workers exists even on older deployed schemas
+  // that pre-date it being added to SCHEMA_SQL above.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS site_workers (
+      site_id      TEXT NOT NULL,
+      worker_id    TEXT NOT NULL,
+      assigned_by  TEXT,
+      assigned_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (site_id, worker_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sw_site   ON site_workers(site_id);
+    CREATE INDEX IF NOT EXISTS idx_sw_worker ON site_workers(worker_id);
+  `);
 
   console.log('[DB] Schema ready');
   return db;

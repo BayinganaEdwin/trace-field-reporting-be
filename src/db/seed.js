@@ -2,9 +2,8 @@
  * Seed demo data
  * Run: node src/db/seed.js
  *
- * Default sites (site-default-1, site-default-2) are created by initSchema() with
- * a 'system' placeholder. This script reassigns them to the demo manager/owner
- * and assigns workers via the site_workers junction table.
+ * Creates all 5 demo sites from scratch. site-default-1 and site-default-2
+ * are inserted here (they are NOT pre-created by initSchema).
  *
  * Worker assignments:
  *   site-default-1  (Kacyiru Housing Block A)    → Amara (w1), Jean (w2)
@@ -37,15 +36,25 @@ async function main() {
   }
   console.log(`[Seed] ${users.length} users`);
 
-  // ── Reassign default sites to demo manager/owner ──────────────────────────
-  // initSchema() created these with manager_id = 'system'. Assign to real users.
-  db.prepare(`
-    UPDATE sites SET manager_id = ?, owner_id = ?, updated_at = datetime('now')
-    WHERE id IN ('site-default-1', 'site-default-2')
-  `).run('user-manager-1', 'user-owner-1');
-
-  // ── Additional demo sites (3 more beyond the 2 defaults) ──────────────────
+  // ── All 5 demo sites ───────────────────────────────────────────────────────
+  // site-default-1 and site-default-2 are created here, not by initSchema().
   const extraSites = [
+    {
+      id: 'site-default-1',
+      name: 'Kacyiru Housing Block A',
+      address: 'KG 548 St, Kacyiru, Kigali',
+      lat: -1.9440, lng: 30.0619,
+      targetStage: 'concrete_poured',
+      startDate: '2024-09-01',
+    },
+    {
+      id: 'site-default-2',
+      name: 'Kimironko Commercial Plaza',
+      address: 'KG 11 Ave, Kimironko, Kigali',
+      lat: -1.9400, lng: 30.1150,
+      targetStage: 'structure_complete',
+      startDate: '2024-07-15',
+    },
     {
       id: 'site-nyarutarama-1',
       name: 'Nyarutarama Office Tower',
@@ -78,7 +87,7 @@ async function main() {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(s.id, s.name, s.address, s.lat, s.lng, 'user-manager-1', 'user-owner-1', s.targetStage, s.startDate);
   }
-  console.log(`[Seed] 2 default + ${extraSites.length} extra sites (5 total)`);
+  console.log(`[Seed] ${extraSites.length} sites`);
 
   // ── Worker assignments (site_workers junction table) ──────────────────────
   // Each worker is assigned to specific sites — not all sites.
@@ -209,4 +218,9 @@ async function main() {
   console.log('    Remera:                 Amara, Grace');
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+// Allow inline calls from boot() as well as direct CLI execution
+if (require.main === module) {
+  main().catch(e => { console.error(e); process.exit(1); });
+}
+
+module.exports = { seedDatabase: main };

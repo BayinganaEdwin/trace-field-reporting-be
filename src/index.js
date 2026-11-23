@@ -60,17 +60,16 @@ function registerRoutes() {
 async function boot() {
   await initSchema();
 
-  const { getDbSync, DB_FILE } = require('./db/schema');
-  const fs = require('fs');
+  const { getDbSync } = require('./db/schema');
   const db = getDbSync();
   const userCount = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
   if (userCount === 0) {
-    console.log('[SiteLog] Empty database — running seed...');
-    // Inline seed to avoid a separate child process
-    const { execSync } = require('child_process');
-    execSync(`node ${require('path').join(__dirname, 'db/seed.js')}`, {
-      stdio: 'inherit',
-    });
+    console.log('[SiteLog] Empty database — seeding demo data...');
+    // Call seed inline so the same in-memory DB gets populated.
+    // execSync would run a child process with its own DB singleton and the
+    // parent would never see the inserted rows.
+    const { seedDatabase } = require('./db/seed');
+    await seedDatabase();
   }
 
   registerRoutes();

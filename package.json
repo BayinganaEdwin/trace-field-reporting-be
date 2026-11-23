@@ -7,7 +7,13 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "seed": "node src/db/seed.js",
-    "test": "node src/test-api.js"
+    "test": "jest --runInBand --forceExit --testTimeout=15000",
+    "test:verbose": "jest --runInBand --forceExit --verbose --testTimeout=15000"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/src/__tests__/**/*.test.js"],
+    "testTimeout": 15000
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -21,6 +27,8 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.3"
+    "jest": "^30.5.2",
+    "nodemon": "^3.0.3",
+    "supertest": "^7.3.2"
   }
 }
