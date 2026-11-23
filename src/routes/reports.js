@@ -350,6 +350,20 @@ router.post('/:id/flag', requireAuth, requireRole('manager', 'owner'), (req, res
   res.json(rowToReport(db.prepare('SELECT * FROM reports WHERE id = ?').get(req.params.id)));
 });
 
+// DELETE /reports/:id — worker deletes their own report (only before manager decision)
+router.delete('/:id', requireAuth, requireRole('worker'), (req, res) => {
+  const db = getDb();
+  const report = db.prepare('SELECT * FROM reports WHERE id = ?').get(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Report not found' });
+  if (report.submitted_by_id !== req.user.id)
+    return res.status(403).json({ error: 'You can only delete your own reports' });
+  if (['approved', 'rejected'].includes(report.status))
+    return res.status(400).json({ error: 'Cannot delete a report that has already been reviewed' });
+
+  db.prepare('DELETE FROM reports WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 module.exports = router;
 
 // Valid construction stages accepted in the reported_stage field
