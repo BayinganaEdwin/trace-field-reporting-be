@@ -47,7 +47,8 @@ async function callInference(imageBuffer, mimetype) {
   try {
     const form = new FormData();
     form.append('image', imageBuffer, { filename: 'photo.jpg', contentType: mimetype });
-    const res = await fetch(`${INFERENCE_URL}/predict`, { method: 'POST', body: form, timeout: 15000 });
+    // 90s timeout: Render free tier can take 60-90s to cold-start
+    const res = await fetch(`${INFERENCE_URL}/predict`, { method: 'POST', body: form, timeout: 90000 });
     if (!res.ok) throw new Error(`Inference HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -163,6 +164,15 @@ router.post('/', requireAuth, requireRole('worker'), async (req, res) => {
     (async () => {
       // 1. Classification — what stage is this photo?
       const ai = await callInference(imageBuffer, imageMimetype);
+      if (!ai) {
+        // ML server unreachable or timed out — flag for manual review
+        db.prepare(`
+          UPDATE reports
+          SET status = 'flagged', ai_observations = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).run('AI analysis unavailable — please review this report manually.', reportId);
+        console.warn(`[AI] report ${reportId} — inference failed, flagged for manual review`);
+      }
       if (ai) {
         // Flag when:
         //   (a) not a construction image

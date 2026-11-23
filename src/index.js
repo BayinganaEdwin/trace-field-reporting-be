@@ -83,6 +83,20 @@ boot().catch((err) => {
   process.exit(1);
 });
 
+// ── Keep ML server warm on Render free tier ───────────────────────────────────
+// Render spins down free services after 15 min of inactivity.
+// Ping the ML server every 10 minutes so cold starts never affect real requests.
+const INFERENCE_URL = process.env.INFERENCE_URL || 'http://localhost:5001';
+const fetch = require('node-fetch');
+setInterval(async () => {
+  try {
+    await fetch(`${INFERENCE_URL}/health`, { timeout: 10000 });
+    console.log('[KeepAlive] ML server pinged');
+  } catch (e) {
+    console.warn('[KeepAlive] ML server ping failed:', e.message);
+  }
+}, 10 * 60 * 1000); // every 10 minutes
+
 module.exports = app;
 
 // Version endpoint — useful for deployment health checks and report attribution
