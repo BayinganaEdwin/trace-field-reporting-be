@@ -178,19 +178,15 @@ router.post('/', requireAuth, requireRole('worker'), async (req, res) => {
         //   (a) not a construction image
         //   (b) model confidence is too low to trust (< 60%)
         //   (c) detected stage doesn't match what the worker reported
-        const LOW_CONFIDENCE_THRESHOLD = 0.60;
         const isNotConstruction = !ai.detectedStage || ai.detectedStage === 'not_construction';
-        const isLowConfidence   = !isNotConstruction && (ai.confidenceScore ?? 0) < LOW_CONFIDENCE_THRESHOLD;
-        const isMismatch        = !isNotConstruction && !isLowConfidence && ai.detectedStage !== reported_stage;
-        const aiStatus          = (isNotConstruction || isLowConfidence || isMismatch) ? 'flagged' : 'verified';
+        const isMismatch        = !isNotConstruction && ai.detectedStage !== reported_stage;
+        const aiStatus          = (isNotConstruction || isMismatch) ? 'flagged' : 'verified';
 
         const observation = isNotConstruction
           ? `AI could not identify a construction stage in this photo — manual review required.`
-          : isLowConfidence
-            ? `AI confidence too low (${Math.round(ai.confidenceScore * 100)}%) to verify — manual review required.`
-            : isMismatch
-              ? `AI detected ${ai.detectedStage} but worker reported ${reported_stage} — stage mismatch.`
-              : `AI detected ${ai.detectedStage} with ${Math.round(ai.confidenceScore * 100)}% confidence.`;
+          : isMismatch
+            ? `AI detected ${ai.detectedStage} but worker reported ${reported_stage} — stage mismatch.`
+            : `AI detected ${ai.detectedStage} with ${Math.round(ai.confidenceScore * 100)}% confidence.`;
 
         db.prepare(`
           UPDATE reports
@@ -198,8 +194,11 @@ router.post('/', requireAuth, requireRole('worker'), async (req, res) => {
               ai_model_version = ?, ai_inference_ms = ?, ai_observations = ?,
               status = ?, updated_at = datetime('now')
           WHERE id = ?
+        // Store null for ai_detected_stage when not_construction — the adapter
+        // and UI use null to mean "not a construction image".
+        const storedStage = isNotConstruction ? null : ai.detectedStage;
         `).run(
-          ai.detectedStage, ai.confidenceScore, JSON.stringify(ai.allScores),
+          storedStage, ai.confidenceScore, JSON.stringify(ai.allScores),
           ai.modelVersion || 'mobilenetv2-v1', ai.inferenceMs || 0,
           observation, aiStatus,
           reportId
