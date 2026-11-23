@@ -164,16 +164,23 @@ router.post('/', requireAuth, requireRole('worker'), async (req, res) => {
       // 1. Classification — what stage is this photo?
       const ai = await callInference(imageBuffer, imageMimetype);
       if (ai) {
-        // Flag when: (a) not a construction image, or (b) detected stage doesn't match reported stage
+        // Flag when:
+        //   (a) not a construction image
+        //   (b) model confidence is too low to trust (< 60%)
+        //   (c) detected stage doesn't match what the worker reported
+        const LOW_CONFIDENCE_THRESHOLD = 0.60;
         const isNotConstruction = !ai.detectedStage || ai.detectedStage === 'not_construction';
-        const isMismatch        = !isNotConstruction && ai.detectedStage !== reported_stage;
-        const aiStatus          = (isNotConstruction || isMismatch) ? 'flagged' : 'verified';
+        const isLowConfidence   = !isNotConstruction && (ai.confidenceScore ?? 0) < LOW_CONFIDENCE_THRESHOLD;
+        const isMismatch        = !isNotConstruction && !isLowConfidence && ai.detectedStage !== reported_stage;
+        const aiStatus          = (isNotConstruction || isLowConfidence || isMismatch) ? 'flagged' : 'verified';
 
         const observation = isNotConstruction
           ? `AI could not identify a construction stage in this photo — manual review required.`
-          : isMismatch
-            ? `AI detected ${ai.detectedStage} but worker reported ${reported_stage} — stage mismatch.`
-            : `AI detected ${ai.detectedStage} with ${Math.round(ai.confidenceScore * 100)}% confidence.`;
+          : isLowConfidence
+            ? `AI confidence too low (${Math.round(ai.confidenceScore * 100)}%) to verify — manual review required.`
+            : isMismatch
+              ? `AI detected ${ai.detectedStage} but worker reported ${reported_stage} — stage mismatch.`
+              : `AI detected ${ai.detectedStage} with ${Math.round(ai.confidenceScore * 100)}% confidence.`;
 
         db.prepare(`
           UPDATE reports
